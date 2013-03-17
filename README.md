@@ -27,6 +27,7 @@ Lowlevel bindings for PostgreSQL
 ## Documentation ##
 See PGSQL/psql.flx and examples/testdb.flx
 However here is a quick example
+
     include "PGSQL/pgsql";
     include "PGSQL/pgsql_pool";
     open Pgsql;
