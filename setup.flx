@@ -1,0 +1,25 @@
+include "std/felix/pkgtool";
+//$ Preforms build tasks in a way an Lib might like them done
+BUILD_LIKE = Lib;
+ 
+open PkgTool;
+open Filename;
+
+instance PkgTool {
+  proc build () {
+    task("Determining 'pgsql' configuration");
+    var pg_config_err = "Unable to execute 'pg_config'. Make 'pg_config' is in your path and is functional. See setup.log for details.";
+    var includes = run_cmd("pg_config --includedir",pg_config_err);    
+    var ldflags = run_cmd("pg_config --ldflags",pg_config_err);
+    var ldstaticflags = ldflags;
+    task("Creating configuration for " + NAME);
+    create_config("pgsql",list("libpq-fe.h"),
+                  list("libpq"+#Config::config.EXT_SHLIB),Empty[string],
+                  split(ldflags," "));
+    default_build();
+  }
+
+}
+
+SetupTool::run();
+

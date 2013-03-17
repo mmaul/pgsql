@@ -1,0 +1,83 @@
+//$ Demonstrate:
+//$   Create database
+//$   Create a table
+//$   Insert some data
+//$   Lookup some data
+//$   Drop database
+//$ testdb <pg user/w create db priv> <pg user password>
+
+include "PGSQL/pgsql";
+include "PGSQL/pgsql_pool";
+open Pgsql;
+open PgsqlPool;
+
+match System::args() with
+|Cons(_,Cons(?user,Cons(?password,_))) =>
+  //$ Connect to tempalte1 while we create the DB
+  var conn_template1 = "host=127.0.0.1 port=5432 dbname=template1 user="+user+
+    " password="+password;
+  var db_pool1 = PgsqlPool::create_pgsql_pool(conn_template1,size(1));
+  // Get DB handle 
+  match db_pool1.get_next() with
+  |Some template1_handle => 
+    // Create DB
+    var rslt1 = pq_exec(template1_handle,"create database testdb");
+    match pq_result_status(rslt1) with
+    |?status when status == PGRES_COMMAND_OK =>
+      // Reconnect to new DB 
+      println$ "Database creation of 'testdb' succeded";
+      var conn_testdb = "host=127.0.0.1 port=5432 dbname=testdb user="+user
+        " password="+password;
+      var testdb_pool = PgsqlPool::create_pgsql_pool(conn_testdb,size(1));
+      match testdb_pool.get_next() with
+      |Some testdb_handle => 
+        var rslt2 = pq_exec(testdb_handle,"""
+CREATE TABLE mailing_list (id SERIAL PRIMARY KEY,name VARCHAR(64),email VARCHAR(64))
+""");
+        match pq_result_status(rslt2) with
+        |$(PGRES_COMMAND_OK) =>
+          // Insert some data
+          var rslt3 = pq_exec(testdb_handle,
+"INSERT INTO mailing_list (name,email) VALUES('John Doe','doe.john@email.com')");
+          match pq_result_status(rslt3) with
+          |$(PGRES_COMMAND_OK) =>
+            // Now look it up
+            val qry = """SELECT id,name,email FROM mailing_list""";
+            val rslt4 = pq_exec(testdb_handle,qry);
+            match pq_result_status(rslt4) with
+            |$(PGRES_TUPLES_OK) => 
+              for var r in 0 upto (pq_ntuples(rslt4)-1) do
+                println$ pq_getvalue(rslt4,r,0)+" , "+pq_getvalue(rslt4,r,1)+ 
+                  ","+pq_getvalue(rslt4,r,2);
+              done
+              //$ Close existing connections
+              destroy_member(testdb_handle);
+              destroy_member(template1_handle);
+              //$ Reconnect to template1 
+              db_pool1 = PgsqlPool::create_pgsql_pool(conn_template1,size(1));
+              match db_pool1.get_next() with
+              |Some ?handle =>
+                // Okay now drop the database were done
+                val rslt5 = pq_exec(handle,"DROP DATABASE testdb");
+                match pq_result_status(rslt5) with
+                |$(PGRES_COMMAND_OK) =>
+                  println$ "Database testdb dropped";
+                  destroy_member(handle);
+                |_ => fail("Error dropping database testdb");
+                endmatch;
+              |_ => fail("Error reconnecting");
+              endmatch;
+            |_ => println$ "Query failed";
+            endmatch;
+          |_ => fail("Error inserting");
+          endmatch;
+        |_ => fail("Error creating table");
+        endmatch;
+      |_ => fail("Error connecting to database testdb");
+      endmatch;
+    |_ => fail("Database creation of 'testdb' failed");
+    endmatch;
+  |_ => fail("Failed getting db handle");
+  endmatch;
+|_ => fail("Invalid arg: testdb <pg user> <pg password>");
+endmatch ;

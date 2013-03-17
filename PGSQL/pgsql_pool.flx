@@ -1,0 +1,47 @@
+include "collection/pool";
+include "PGSQL/pgsql";
+instance Pool[string] {
+  proc destroy_member(s:string) { println("Shreding:"+s); }
+}
+
+//open Pool[string];
+//println("Circular Pool");
+//var j=0;
+//val n = pool((fun () ={ j++;return "CIR Member "+str(j);}),size(3),CIR);
+//for var k in 0 upto 7 do
+//    println(n.get_next());
+//done
+//n.destroy();
+
+
+open Pgsql;
+class PgsqlPool {
+
+  inherit Pool[Pgsql::pgconn_ptr];
+  
+  publish """
+  Creates a pool of db handles of sz size to a postgress database db
+  """ 
+  fun create_pgsql_pool(connect_string:string,sz:size) = {
+    val n = pool((fun () = {
+      var db = pq_connectdb(connect_string);
+      if isNull[pgconn_ptr](db) do
+      	 fail "open DB error[abort] ";
+      else
+        match pq_status(db) with
+          |$(CONNECTION_OK)  => return db;
+          |$(CONNECTION_BAD) => fail "open DB error[CONNECTION_BAD] ";
+          |_                 => fail "open DB error[UNKNOWN] ";
+         endmatch;
+      done
+    }),sz,INF);
+  return n;
+}
+
+  instance Pool[pgconn_ptr] {
+    proc destroy_member (m:pgconn_ptr) =   {
+      pq_finish(m);
+    }
+  }
+}
+
